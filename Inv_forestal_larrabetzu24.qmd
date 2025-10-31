@@ -1,0 +1,762 @@
+---
+title: "Landarediaren aldaketa"
+format:
+  html:
+    theme: flatly
+    toc: true
+    output-dir: "../docs"
+---
+
+
+
+```{r libraries, message=FALSE, warning=FALSE, include=TRUE}
+
+library(flexdashboard)
+library(leaflet)
+library(leaflet.extras)
+
+library(scales)
+
+library(readxl) #para leer excell
+library(tidyverse)
+library(tinytex) # to Knit to a PDF and Beamer
+library(DT)
+library(sf)
+library(knitr)
+library(plotly)
+library(ggthemes)
+library(kableExtra)
+library(RColorBrewer)
+library(patchwork)
+library(tmap)
+
+```
+## Selección de municipios
+
+```{r herriak}
+herriak <- c("Larrabetzu")  |>  
+  sort()  |>  
+  as_factor()
+```
+
+```{r aoi}
+aoi <- read_sf("../../data/geodata/CB_MUNICIPIOS_5000_ETRS89/CB_MUNICIPIOS_5000_ETRS89.shp")|> 
+  select("NOMBRE_TOP") |> 
+  filter(NOMBRE_TOP %in% herriak)
+
+# Poner nombres adecuados
+names(aoi) <- c("Herria", "geometry")
+```
+
+
+```{r guardar_AOI, echo=FALSE, message=FALSE, warning=FALSE}
+st_write(aoi, "../geoproceso/aoi_larrabetzu.gpkg", 
+         append = FALSE)
+
+```
+
+
+Los municipios a analizar son:
+```{r municipios, include=TRUE}
+as_tibble_col(aoi$Herria)
+```
+
+
+### Calcular el área de los municipios 
+Calcular la superficie de cada municiìo en hectáreas.
+```{r calc_area, include=TRUE}
+aoi$Area_osoa <- st_area(aoi) |> # Calcula el área del AOI
+  units::set_units(hectare) # para que sea en hectare
+
+# units::set_units(km^2) # para que sea en km2 
+
+# Para poder manipular, se pasa a número real
+
+aoi <- aoi |> 
+  mutate(Area_osoa= as.double(round(Area_osoa,2)))
+
+aoi
+```
+
+## Inventario Forestal
+
+```{r campos}
+info <- c("TIPES_es", "SP1_es",    "EMASA1" ,    "geometry")  
+```
+
+
+
+```{r Inv_2022}
+Inv_2022 <- read_sf("../../data/geodata/Inventarios_Forestal/INV_FORESTAL_2022_10000_ETRS89/INV_FORESTAL_2022_10000_ETRS89.shp") |> 
+  select(all_of(info))
+
+
+ names(Inv_2022)
+```
+
+```{r unique_EMASA1}
+unique(Inv_2022$EMASA1)
+```
+
+```{r recode_EMASA1}
+Inv_2022 <- Inv_2022 %>%
+  mutate(EMASA1 = recode(EMASA1,
+                        "Haga basoa / Latizal" = "Latizal",
+                        "Mendi zangarra / Monte Bravo" = "Monte Bravo",
+                        "Tantai basoa / Fustal" = "Fustal",
+                        "Mozketa / Tala" = "Tala",
+                        "Basoberrituak / Repoblado" = "Repoblado"))
+
+unique(Inv_2022$EMASA1)
+```
+
+
+
+
+```{r Inv_2024}
+Inv_2024 <-read_sf("../../data/geodata/Inventarios_Forestal/INV_FORESTAL_2024_10000_ETRS89/INV_FORESTAL_2024_10000_ETRS89.shp") |> 
+  select(c( "TIPES_es", "SP1_es",   "EMASA1",   "geometry")) 
+
+
+ names(Inv_2024)
+```
+
+
+
+```{r Inv_2023}
+Inv_2023 <- read_sf("../../data/geodata/BASO_IF_INV_FORESTAL_2023_10000/INV_FORESTAL_2023_10000_ETRS89.shp") |> 
+  select(c( "TIPES_es", "SP1_es",   "EMASA1",   "geometry"))  # 2 Del inventario tomar solo los campos que interesan
+
+ names(Inv_2023)
+```
+
+
+
+```{r Inv_2021}
+Inv_2021 <- read_sf("../../data/geodata/Inventarios_Forestal/INV_FORESTAL_2021_10000_ETRS89/INV_FORESTAL_2021_10000_ETRS89.shp") |> 
+  select(-c(1:23))|>  # 2 Del inventario tomar solo los campos que interesan
+  select(-c(4:9))     # ahora solo los de la especie principal
+
+ names(Inv_2021)
+```
+
+
+
+```{r Inv_2020}
+Inv_2020 <- read_sf("../../data/geodata/Inventarios_Forestal/INV_FORESTAL_2020_10000_ETRS89/INV_FORESTAL_2020_10000_ETRS89.shp") |> 
+  select(-c(1:23))|>  # 2 Del inventario tomar solo los campos que interesan
+  select(-c(4:9))     # ahora solo los de la especie principal
+
+names(Inv_2020)
+```
+
+
+```{r Inv_2019}
+Inv_2019 <- read_sf("../../data/geodata/Inventarios_Forestal/INV_FORESTAL_2019_10000_ETRS89/INV_FORESTAL_2019_10000_ETRS89.shp") |> 
+  select(-c(1:23))|>  # 2 Del inventario tomar solo los campos que interesan
+  select(-c(4:7))     # ahora solo los de la especie principal
+
+names(Inv_2019)
+```
+
+
+```{r Inv_2018}
+Inv_2018 <- read_sf("../../data/geodata/Inventarios_Forestal/INV_FORESTAL_2018_10000_ETRS89/INV_FORESTAL_2018_10000_ETRS89.shp") |> 
+  select(c("DES_TIPEST", "DES_SP1", "DES_E1", "geometry" )) #  Del inventario tomar solo los campos que interesan
+  
+
+names(Inv_2018)
+```
+
+
+```{r Inv_2016}
+Inv_2016 <- read_sf("../../data/geodata/Inventarios_Forestal/INV_FORESTAL_2016.gpkg") |> 
+  select(c("DES_TIPEST", "DES_SP1", "DES_E1", "geom" )) |> 
+  rename(geometry=geom)#  Del inventario tomar solo los campos que interesan 
+  
+
+ head(Inv_2016)
+```
+
+```{r Inv_2010}
+Inv_2010 <- read_sf("../../data/geodata/Inventarios_Forestal/INV_FORESTAL_2010_10000_ETRS89/INV_FORESTAL_2010_10000_ETRS89.shp") |>  
+  select(c("DES_TIPEST", "DES_SP1", "DES_E1", "geometry" )) #  Del inventario tomar solo los campos que interesan
+  
+
+# head(Inv_2010)
+```
+
+
+
+```{r Inv_2005}
+Inv_2005 <- read_sf("../../data/geodata/Inventarios_Forestal/INV_FORESTAL_2005_10000_ETRS89/INV_FORESTAL_2005_10000_ETRS89.shp") |> 
+  select(c("DES_TIPEST", "DES_SP1", "DES_E1", "geometry" )) #  Del inventario tomar solo los campos que interesan
+  
+
+# head(Inv_2005)
+```
+
+
+
+Hay que comprobar el CRS:
+ 2005, 2010  no tienen
+```{r crs}
+
+st_crs(Inv_2005) <- st_crs(aoi)
+st_crs(Inv_2010) <- st_crs(aoi)
+
+```
+
+### Igualar los nombres
+
+Los nombres de los campos seleccionados deben coincidir.
+Para ello se utilizan los nombres del año 2019
+El año 2005 está correcto
+
+```{r izenak1}
+izenak1 <- names(Inv_2019)
+
+
+names(Inv_2024) <- izenak1
+names(Inv_2023) <- izenak1
+names(Inv_2022) <- izenak1
+names(Inv_2021) <- izenak1
+names(Inv_2020) <- izenak1
+```
+
+### Añadir el año
+
+
+
+```{r add_urte}
+# Crear una lista con los nombres de los data frames
+
+df_list <- list(Inv_2005 = Inv_2005,
+                Inv_2010 = Inv_2010,
+                Inv_2016 = Inv_2016,
+                Inv_2018 = Inv_2018,
+                Inv_2019 = Inv_2019,
+                Inv_2020 = Inv_2020,
+                Inv_2021 = Inv_2021,
+                Inv_2022 = Inv_2022,
+                Inv_2023 = Inv_2023,
+                Inv_2024 = Inv_2024)
+
+
+
+# Crear una función que agregue la columna "year" a cada data frame
+add_year_column <- function(df, year) {
+  df$urte <- as.character(year)
+  return(df)
+}
+
+# Aplicar la función a cada dataframe en la lista
+years <- c(2005, 2010, 2016, 2018, 2019, 2020, 2021, 2022, 2023, 2024)
+
+df_list <- Map(add_year_column, df_list, years)
+
+
+
+# Llamar a la función para cada data frame en la lista
+# for (i in seq_along(df_list)) {
+#   df_list[[i]] <- add_year_column(df_list[[i]], substring(names(df_list)[i], 5))
+# }
+
+# Verificar que la columna "year" se haya agregado correctamente
+# df_list
+names(df_list)
+length(df_list)
+```
+
+
+
+
+```{r separar}
+#Inv_2005$urte <- as.character(2005)
+
+#Inv_2010$urte <- as.character(2010)
+#Inv_2016$urte <- as.character(2016)
+#Inv_2018$urte <- as.character(2018)
+#Inv_2019$urte <- as.character(2019)
+
+#Inv_2020$urte <- as.character(2020)
+#Inv_2021$urte <- as.character(2021)
+
+#Inv_2022$urte <- as.character(2022)
+
+
+# head(Inv_2021)
+```
+
+### Recortar al área de estudio
+
+
+```{r Todo_inventario}
+Todo_inventario <- df_list
+# Todo_inventario <- list(Inv_2005,Inv_2010, Inv_2016,Inv_2018, Inv_2019, Inv_2020, Inv_2021)
+length(Todo_inventario)
+```
+
+
+
+
+```{r f_corte}
+f_corte <- function(x) {
+ x  |> 
+    st_intersection(aoi)
+}
+```
+
+```{r cortar_inventario}
+
+Inv_AOI <- map(Todo_inventario, f_corte)
+```
+
+
+
+
+```{r nombres_corte}
+#Los nombres de las capas son:
+inventarios <- c("Inv_2005", "Inv_2010","Inv_2016","Inv_2018", "Inv_2019", "Inv_2020", "Inv_2021", "Inv_2022", "Inv_2023", "Inv_2024")
+# Se añade "clip" para saber que es la zona de corte
+inventarios <- paste0("clip_", inventarios)
+inventarios
+
+names(Inv_AOI) <- inventarios
+
+```
+
+```{r merge_df}
+# combinar los resultados en un solo dataframe.
+Inv_F_aoi <- map_df(Todo_inventario, f_corte)
+
+unique(Inv_F_aoi$urte)
+```
+
+
+
+
+
+```{r clip_anual}
+Inv_F_aoi_2005 <-f_corte(Inv_2005)
+
+Inv_F_aoi_2010 <-f_corte(Inv_2010)
+Inv_F_aoi_2016 <-f_corte(Inv_2016)
+Inv_F_aoi_2018 <-f_corte(Inv_2018)
+Inv_F_aoi_2019 <-f_corte(Inv_2019)
+
+Inv_F_aoi_2020 <-f_corte(Inv_2020)
+Inv_F_aoi_2021 <-f_corte(Inv_2021)
+Inv_F_aoi_2022 <-f_corte(Inv_2022)
+
+
+Inv_F_aoi_2023 <-f_corte(Inv_2023)
+Inv_F_aoi_2024 <-f_corte(Inv_2024)
+
+# head(Inv_F_aoi_2005)
+```
+
+
+
+
+
+Unir las tablas
+```{r}
+# Inv_F_aoi <- bind_rows(Inv_F_aoi_2005,Inv_F_aoi_2019, Inv_F_aoi_2021  )
+
+#Inv_F_aoi <- bind_rows(Inv_F_aoi_2019, Inv_F_aoi_2021  )
+```
+
+
+
+
+
+## Simplificar tipos de vegetación
+
+Solo interesa la vegetación natural
+
+```{r interes}
+# Los tipos DES_TIPEST que no interesan serán: 
+
+Otros <- c("Industrial","Urbano discontinuo","Primario","Cultivos","Urbano continuo","Equipamiento/Dotacional","Transportes","Otras superficies artificiales")
+
+```
+
+El resto de grupos se simplifica en grupos más grandes
+
+
+
+
+
+```{r funcion_simplificar}
+
+# Se crean los grupos de análisis
+    # Arbustos y Prados
+    # Eucaliptos
+    # Frondosas
+    # Coníferas
+    # Otros
+simplificar_inventario <- function(x) {
+ x  |> 
+  mutate(Mota=case_when(DES_TIPEST=="Arbustedos"| 
+                           DES_TIPEST=="Pastizal-Matorral" |  
+                           DES_TIPEST=="Pastizal-matorral" | 
+                           DES_TIPEST=="Herbazal"| 
+                           DES_TIPEST=="Matorral" | 
+                          
+                           
+                           DES_TIPEST=="Prado"| 
+                           DES_TIPEST=="Prados"| 
+                           DES_TIPEST=="Herbazal-Pastizal"| 
+                           DES_SP1=="Crataegus"| 
+                           DES_SP1=="Bardaguera"| 
+                           DES_TIPEST=="Prados con setos"| 
+                           DES_TIPEST=="Prado con setos / con sebes"| 
+                           DES_SP1=="Labiérnago"
+                         ~ "Arbustos y Prados",
+                         # eucalipto
+                         str_detect(DES_SP1, "Eucalipto")| 
+                           DES_SP1=="Otros eucaliptos"|
+                           DES_SP1=="Mezcla de eucaliptos"|
+                           DES_SP1=="Eucalyptus nitens"|
+                           DES_SP1=="Eucalyptus globulus"|
+                           DES_SP1=="Eucalipto nitens"|
+                           DES_SP1=="Eucalipto globulus"|
+                           DES_SP1=="Eucaliptos"
+                         ~ "Eucalipto",
+                         # Coniferas
+                         str_detect(DES_SP1, "Pino")|
+                           str_detect(DES_SP1, "Pinus")|
+                           str_detect(DES_SP1, "Plantaciones de coníferas")|
+                           str_detect(DES_SP1, "Chamaecyparis")|
+                           str_detect(DES_SP1, "Pseudotsuga")|
+                           DES_SP1=="Chameciparis"|
+                           str_detect(DES_SP1, "Abeto")|
+                           DES_SP1=="Criptomeria"|
+                           str_detect(DES_SP1, "edro")|
+                           str_detect(DES_SP1, "Secuoya")|
+                           DES_SP1=="Pinabete"|
+                           str_detect(DES_SP1, "Pícea")|
+                           str_detect(DES_SP1, "Ciprés")|
+                           DES_SP1=="Otras coníferas"|
+                           DES_SP1=="Coníferas, excepto pinos"|
+                           DES_SP1=="Tsuga"|
+                           DES_SP1=="Tuya"|
+                           DES_SP1=="Otros pinos"|
+                           str_detect(DES_SP1, "nebro")
+                         ~ "Coníferas",
+                         # Frondosas
+                          str_detect(DES_SP1, "cacia") |
+                           str_detect(DES_SP1, "Fagus") |
+                           str_detect(DES_SP1, "Juglans") |
+                           str_detect(DES_SP1, "Quercus") |
+                           DES_SP1== "Mezcla de árboles de ribera" |
+                           DES_SP1=="Castaño"|
+                           DES_SP1== "Castanea sativa"|
+                           DES_SP1=="Árboles ripícolas"|
+                           DES_SP1=="Encina"|
+                           str_detect(DES_SP1, "Roble")|
+                           DES_SP1=="Abedul"|        
+                           DES_SP1=="Fresno excelsior"|                
+                           DES_SP1=="Haya"|                      
+                           DES_SP1=="Tulipero"|                    
+                           DES_SP1=="Quejigo fagínea"|                  
+                           DES_SP1=="Bosque mixto atlántico"|
+                           str_detect(DES_SP1, "Alerce")|
+                           DES_SP1 ==  "Álamo"|
+                           DES_SP1 ==  "Sauce"|
+                           DES_SP1 ==  "Prunus"|
+                           str_detect(DES_SP1, "Nogal")|
+                           DES_SP1 ==  "Rebollo"|
+                           DES_SP1 ==  "Abedul pubescens"|
+                           DES_SP1 ==  "Rebollo"|
+                           DES_TIPEST ==  ""|
+                           DES_SP1== "Fresno"|
+                           DES_SP1== "Frondosas de pequeño porte"|
+                           DES_SP1== "Avellano"|
+                           DES_SP1== "Corylus avellana"|
+                           DES_SP1== "Aliso"|
+                           DES_SP1== "Madroño"|
+                           DES_SP1== "Arbutus unedo"|
+                           DES_SP1== "Plantaciones de frondosas variadas"|
+                           DES_SP1== "Acebo"|
+                           DES_SP1== "Frondosas de gran porte"|
+                           DES_SP1== "Bosque mixto de cantil"|
+                           DES_SP1== "Otras frondosas"|
+                           DES_SP1== "Plátano"|
+                           DES_SP1== "Cerezo"|
+                           str_detect(DES_SP1, "Arce")|
+                           str_detect(DES_SP1, "quercus")|
+                           str_detect(DES_SP1, "Abedul")|
+                           DES_SP1== "Plantaciones de frondosas y coníferas variadas"|
+                           DES_SP1== "Otras frondosas"|
+                           DES_SP1== "Tilo"|
+                           DES_SP1== "Otros árboles ripícolas"|
+                           DES_SP1== "Liquidambar"|
+                           DES_SP1== "Serotina"|
+                           str_detect(DES_SP1, "hopo")
+                         ~ "Frondosas",
+                         #otros
+                         DES_TIPEST =="Industrial"|
+                           DES_TIPEST ==  "Artificial"|
+                           DES_TIPEST ==  "Infraestructuras de conducción"|
+                           DES_TIPEST ==  "Minería, escombreras, vertederos"|
+                           DES_TIPEST ==  "Urbano discontinuo"|
+                           DES_TIPEST ==  "Agrícola"|
+                           DES_TIPEST ==  "Primario"|
+                           DES_TIPEST ==  "Cultivos"|
+                           DES_TIPEST ==  "Mosaico agricola con artificial"|
+                           DES_TIPEST ==  "Cursos de agua"|
+                           DES_TIPEST ==  "Energía"|
+                           DES_TIPEST ==  "Urbano continuo"|
+                           DES_TIPEST ==  "Equipamiento/Dotacional"|
+                           DES_TIPEST ==  "Autopistas y autovías"|
+                           DES_TIPEST == "Transportes"|
+                           DES_TIPEST == "Otras superficies artificiales"|
+                           DES_TIPEST == "Estuarios"|
+                           DES_TIPEST == "Pantano, embalse"|
+                           DES_TIPEST == "Playas, dunas y arenales"|
+                           DES_TIPEST == "Terciario"|
+                           DES_TIPEST == "Acantilados marinos"|
+                           DES_TIPEST == "Afloramientos rocosos"|
+                           DES_TIPEST == "Canchales"|
+                           DES_TIPEST == "Turberas"|
+                           DES_TIPEST == "Marismas"|
+                           DES_TIPEST == "Mares y océanos"|
+                           DES_TIPEST == "Suministros de agua"|
+                           DES_TIPEST == "Telecomunicaciones"|
+                           DES_TIPEST == "Residuos"|
+                           DES_TIPEST == "Lagunas"
+                         ~"Otros"
+  ))
+}
+  
+
+```
+
+
+
+
+```{r simplificado}
+
+Inv_simple <- simplificar_inventario(Inv_F_aoi)
+head(Inv_simple)
+```
+
+```{r names_Inv_simple}
+names(Inv_simple)
+```
+
+
+```{r nombrar_simple}
+izenak2 <- c("Klase", "Tipo", "Estado","Urte", "Herria",     "Area_osoa", "geometry","Mota")
+names(Inv_simple) <- izenak2
+```
+
+
+```{r unificar_estado}
+names(Inv_simple)
+
+unique(Inv_simple$Estado)
+
+Inv_simple$Estado <- Inv_simple$Estado |> 
+str_replace_all(c("Talas" = "Tala", "Monte Bravo" = "Monte bravo", "Sin datos" =NA)) 
+
+head(Inv_simple)
+unique(Inv_simple$Estado)
+```
+
+```{r area_plot}
+
+Inv_simple$area <- Inv_simple|>
+  st_area() |> 
+  units::set_units(hectare)
+
+
+
+
+Inv_simple <- Inv_simple  |>  
+  mutate(area= as.double(round(area,2)))
+
+Inv_simple 
+```
+
+
+
+
+
+```{r inventarios_anuales}
+
+
+Inv_2024 <- Inv_simple |> 
+  filter(Urte=="2024")
+Inv_2023 <- Inv_simple |> 
+  filter(Urte=="2023")
+Inv_2022 <- Inv_simple |> 
+  filter(Urte=="2022")
+Inv_2021 <- Inv_simple |> 
+  filter(Urte=="2021")
+Inv_2020 <- Inv_simple |> 
+  filter(Urte=="2020")
+
+
+
+
+Inv_2019 <- Inv_simple |> 
+  filter(Urte=="2019")
+Inv_2018 <- Inv_simple |> 
+  filter(Urte=="2018")
+Inv_2016 <- Inv_simple |> 
+  filter(Urte=="2016")
+Inv_2010 <- Inv_simple |> 
+  filter(Urte=="2010")
+Inv_2005 <- Inv_simple |> 
+  filter(Urte=="2005")
+```
+
+
+
+## Guardar
+
+
+
+
+```{r guardar_inventario, echo=FALSE, message=FALSE, warning=FALSE}
+st_write(Inv_simple, "../geoproceso/inventario_larrabetzu.gpkg", 
+         append = FALSE)
+
+st_write(Inv_2024, "../geoproceso/inv_larrabetzu_2024.gpkg", append = FALSE)
+st_write(Inv_2023, "../geoproceso/inv_larrabetzu_2023.gpkg", append = FALSE)
+st_write(Inv_2022, "../geoproceso/inv_larrabetzu_2022.gpkg", append = FALSE)
+st_write(Inv_2021, "../geoproceso/inv_larrabetzu_2021.gpkg", append = FALSE)
+
+st_write(Inv_2020, "../geoproceso/inv_larrabetzu_2020.gpkg", append = FALSE)
+st_write(Inv_2019, "../geoproceso/inv_larrabetzu_2019.gpkg", append = FALSE)
+st_write(Inv_2018, "../geoproceso/inv_larrabetzu_2018.gpkg", append = FALSE)
+st_write(Inv_2016, "../geoproceso/inv_larrabetzu_2016.gpkg", append = FALSE)
+st_write(Inv_2010, "../geoproceso/inv_larrabetzu_2010.gpkg", append = FALSE)
+
+
+st_write(Inv_2005, "../geoproceso/inv_larrabetzu_2005.gpkg", append = FALSE)
+```
+
+## Gráficos
+
+
+
+```{r agrupar}
+Inv_simple <- Inv_simple |> 
+  group_by(Klase, Tipo, Mota, Herria, Urte) |> 
+  summarise(area= round(sum(area, na.rm = TRUE),2)) 
+
+unique(Inv_simple$Urte)
+```
+
+
+```{r plot1}
+plot1 <- Inv_simple |> 
+  st_drop_geometry() |>
+  filter(!is.na(Mota)) |> # Eliminar NA en Mota
+   ggplot(mapping =aes(x=Mota, y=area,fill=Urte))+
+  geom_col(position = "dodge")+ 
+  #coord_flip()+  
+  facet_wrap(~Herria)+
+  theme_stata()
+
+plot1
+```
+
+
+
+
+```{r ploty1}
+ggplotly(plot1)
+```
+
+
+
+```{r plot11}
+plot11 <- Inv_simple |> 
+  st_drop_geometry() |>
+  filter(!is.na(Mota)) |> # Eliminar NA en Mota
+   ggplot(mapping =aes(x=Mota, y=area,fill=Urte))+
+  geom_col(position = "dodge")+ 
+    scale_x_discrete(labels = label_wrap(10)) +
+  #coord_flip()+  
+  facet_wrap(~Herria)+
+  theme_stata()+
+  theme(axis.text.y = element_text(angle = 0, hjust = 0.5, vjust = 0.5))
+
+plot11
+
+
+```
+
+
+```{r ploty11}
+ggplotly(plot11)
+```
+
+
+
+
+```{r plot12}
+plot12 <- Inv_simple |> 
+  st_drop_geometry() |>
+  filter(!is.na(Mota)) |> # Eliminar NA en Mota
+   ggplot(mapping =aes(x=Urte, y=area,fill=Mota))+
+  geom_col(position = "dodge")+ 
+    scale_x_discrete(labels = label_wrap(10)) +
+  #coord_flip()+  
+  facet_wrap(~Herria)+
+  theme_stata()+
+  theme(axis.text.y = element_text(angle = 0, hjust = 0.5, vjust = 0.5))
+
+plot12
+```
+
+
+```{r ploty12}
+ggplotly(plot12)
+```
+
+
+```{r plot3}
+Inv_simple |> 
+  st_drop_geometry() |>
+   ggplot(mapping =aes(x=Mota, y=area,fill=Urte))+
+  geom_col(position = "dodge")+ 
+  #coord_flip()+  
+  facet_grid(Herria~Tipo)+
+  #facet_wrap(~Herria)+
+  theme_stata()
+```
+
+```{r klase}
+unique(Inv_simple$Klase)
+```
+
+
+
+```{r plot2 }
+plot2 <- Inv_simple |> 
+  st_drop_geometry() |>
+  filter(Mota!="Otros")|> 
+  filter(! Klase %in% Otros) |>
+   ggplot(mapping =aes(x=Urte, y=area,color=Mota))+
+  geom_path()+ 
+  
+  geom_point()+ 
+  #coord_flip()+  
+  #facet_grid(Herria~Tipo)+
+  facet_wrap(~Herria)+
+  theme_stata()
+
+plot2
+```
+
+
+```{r ploty2}
+ggplotly(plot2)
+```
+

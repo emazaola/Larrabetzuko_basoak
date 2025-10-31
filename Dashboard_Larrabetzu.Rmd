@@ -1,0 +1,347 @@
+---
+title: "LARRABETZU. Basoak"
+output: 
+  flexdashboard::flex_dashboard:
+    # logo: ../data/GISARTE_Telf.png
+    theme: flatly
+    orientation: columns
+    social: NULL
+    source_code:  NULL
+    vertical_layout: scroll
+---
+
+```{=html}
+<style>
+      .dataTables_scrollBody {
+      max-height: 100% !important;
+      }
+</style>
+```
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+library(flexdashboard)
+library(sf)
+library(tidyverse)
+library(lubridate)
+
+library(leaflet)
+library(leaflet.extras)
+library(tmap)
+
+
+library(RColorBrewer)
+library(plotly)
+library(ggthemes)
+library(scales)
+
+library(DT)
+library(kableExtra)
+```
+
+## Column {data-width="300"}
+
+```{r capas}
+
+aoi <- read_sf("../geoproceso/larrabetzu/aoi_larrabetzu.gpkg")
+
+limites <- aoi
+
+Inven_F <- read_sf("../geoproceso/larrabetzu/inventario_larrabetzu.gpkg")
+```
+
+```{r Monte_publico}
+# larrabetzu Monte público
+
+# Cargar el monte público
+M_publico <- read_sf("../data/geodata/PTS_AgrFor_CS_MUP_25830/PTS_AgrFor_CS_MUP_25830.shp") |> 
+  # cortor a los límites del trabajo
+  st_intersection(limites) |> 
+  select(Herria)
+
+
+
+#CAlcular el aréa del Monte público
+M_publico$area <- M_publico |>  
+  st_area() |>  
+  units::set_units(hectare)
+
+M_publico <- M_publico |>  
+  mutate(area= as.double(round(area,2)))
+
+#Unificar la superficie de Monte Público
+M_publico <- M_publico |> 
+  group_by(Herria) |> 
+  summarise(Superficie=sum(area)) |> 
+  rename(M_Publico=Herria)
+
+```
+
+
+
+```{r}
+Inven_DT <- Inven_F |> 
+  st_drop_geometry()
+```
+
+```{r centroide}
+centroide <- st_centroid(aoi)
+```
+
+```{r}
+# glimpse(Inven_F)
+```
+
+```{r years}
+Inven_F1 <-  Inven_F |> 
+  filter(Urte ==c("2018", "2019", "2020", "2021")) |> 
+  dplyr::group_by(Urte, Mota, Tipo, Estado) |> 
+  dplyr::summarise(Area=sum(area, na.rm = TRUE))
+
+```
+
+```{r levels}
+
+# mota_levels <- unique(Inven_F$Mota)
+mota_levels  <- c( "Frondosas" ,        "Coníferas" ,        "Eucalipto"  ,       "Arbustos y Prados", "Otros") |> 
+  fct_inorder()
+
+
+# Estado_levels <- unique(Inven_F$Estado)
+Estado_levels <- c( "Latizal" ,    "Fustal" ,     "Monte bravo" ,"Repoblado" ,  "Tala" ,       "Sin datos"  )|> 
+  fct_inorder()
+
+```
+
+```{r factor}
+Inven_F <- Inven_F |> 
+  mutate(Mota= factor(Mota),
+         Estado=factor(Estado, levels = Estado_levels)
+         ) 
+
+```
+
+```{r}
+ Inv_2005 <-Inven_F |> filter(Urte=="2005")
+
+Inv_2010 <-Inven_F |>filter(Urte=="2005")
+Inv_2016 <-Inven_F |>filter(Urte=="2016")
+Inv_2018 <-Inven_F |>filter(Urte=="2018")
+Inv_2019 <-Inven_F |>filter(Urte=="2019")
+
+Inv_2020 <-Inven_F |>filter(Urte=="2020")
+Inv_2021 <-Inven_F |>filter(Urte=="2021")
+Inv_2022 <-Inven_F |>filter(Urte=="2022")
+
+# head(Inv_F_aoi_2005)
+
+```
+
+```{r paletas}
+paleta_inv <- c("green",
+                "darkolivegreen4",
+                "dodgerblue4",
+                "forestgreen",
+                "darkorchid3")
+
+paleta_estado <- c("green",
+                   "green4",
+                "darkolivegreen4",
+                "dodgerblue4",
+                "forestgreen",
+                "Khaki4")
+
+```
+
+```{r, include=FALSE}
+years <- unique(Inven_F$Urte)
+
+# Inven_F |> split(Inven_F$Urte) |>   assign(paste0("Inventario", Urte))
+
+
+f_inventario <- function(x) {
+  temp <- Inven_F |> 
+    filter(Urte==x)
+  izena <- paste0("Inventario_",x)
+  assign(izena,temp) 
+   return(temp)
+ 
+}
+
+```
+
+### **Basoak 2022**
+
+```{r mapa1}
+tmap_mode("view")
+Estado_2021 <- Inv_2021
+
+
+
+map_din <- # Inventario Forestal
+  tm_shape(Inv_2021)+
+  tm_borders()+
+  tm_polygons("Mota", legend.show = TRUE, palette = paleta_inv,
+              alpha=0.80) + 
+  
+
+  tm_shape(Estado_2021)+
+  tm_borders()+
+  tm_polygons("Estado", legend.show = TRUE, palette = "Set2",
+              alpha=0.80) + 
+  
+  # Monte público
+  tm_shape(M_publico)+
+  tm_borders(col = "red", lwd=1)+
+  tm_polygons("M_Publico", legend.show = TRUE, fill="tomato",alpha=0.30)+
+  # tm_fill("M_Publico", legend.show = TRUE,col="tomato", alpha=0.30)+
+  
+  
+  #limites
+  tm_shape(limites)+
+  tm_borders(col = "purple", lwd=2)+
+  # Mapas base 
+  tm_basemap(server = "CartoDB.Voyager")+
+  tm_layout(legend.outside = TRUE, frame = FALSE)+
+  tm_credits("GISARTE", fontface = "bold", align = "left") + 
+  tm_view(set.view=
+            c(-3.17346323,43.26026615, # las coordenadas se sacan del centoide
+              13)) 
+
+
+map_din
+```
+
+```{r guardar, include=FALSE}
+tmap_save(map_din, filename = "../mapas/MP_larrabetzu.html")
+```
+
+## Column {data-width="400"}
+
+### **Mota 2016-2022**
+
+```{r para_graficos}
+Inv_simple <- Inven_F |> 
+  group_by(Mota, Urte) |> 
+  summarise(area= round(sum(area, na.rm = TRUE),2)) 
+
+# unique(Inv_simple$Urte)
+
+# unique(Inv_simple$Mota)
+
+
+```
+
+```{r date}
+Inv_simple <- Inv_simple |> 
+  mutate(Urte=as.Date(Urte, format="%Y")) |> 
+  mutate(Urte=year(Urte))
+
+```
+
+```{r mota_levels}
+
+mota_levels <- c("Eucalipto", "Arbustos y Prados","Frondosas" , "Coníferas", "Otros")
+
+Inv_simple <- Inv_simple |> 
+  mutate(Mota= factor(Mota, levels = mota_levels))
+
+```
+
+```{r plot1}
+plot1 <- Inv_simple |> 
+  st_drop_geometry() |>
+  filter(!is.na(Mota)) |> # Eliminar NA en Mota
+  filter(Urte!="2005") |> # El 2005 no aporta
+  filter(Urte!="2010") |> # El 2010 no aporta
+   ggplot(mapping =aes(x=Mota, y=area,fill=Mota))+
+  geom_col(position = "dodge")+ 
+  scale_fill_manual(values = c("dodgerblue4",
+                                   "green",
+                               "forestgreen",
+                                   "darkolivegreen4",
+                                   "darkorchid3"))+
+    scale_x_discrete(labels = label_wrap(10)) +
+  #coord_flip()+  
+ facet_wrap(~Urte)+
+  theme_stata()+ 
+  theme(legend.position = "bottom")+
+  theme(legend.title = element_blank())+
+  xlab("")+
+  theme(axis.text.x = element_text(angle = 50, vjust = 1, hjust = 1, size = 8),
+        axis.ticks.y = element_blank(),
+        axis.text.y = element_blank())
+
+
+ggplotly(plot1) |> 
+      plotly::layout(legend=list(x=0, 
+                                 y = -0.5, 
+                                 xanchor='left',
+                                 yanchor='bottom',
+                                 orientation='h'))  
+```
+
+### **Urteak 2010-2022**
+
+```{r plot2}
+plot2 <- Inv_simple |> 
+  st_drop_geometry() |>
+  filter(!is.na(Mota)) |> # Eliminar NA en Mota
+  filter(Mota!="Otros") |> 
+  filter(Urte!="2005") |> # El 2005 no aporta# El 2005 no aporta
+   ggplot(mapping =aes(x=Urte, y=area,fill=Urte))+
+  geom_col()+ 
+  geom_point()+ 
+  geom_smooth(linewidth=0.35)+ 
+  scale_fill_viridis_c()+
+  #coord_flip()+  
+ facet_wrap(~Mota)+
+  theme_stata()+ 
+  theme(legend.position = "none")+
+  xlab("")
+
+ggplotly(plot2)
+
+
+```
+
+## Column {data-width="300"}
+
+### 
+
+```{r analisis}
+analisis <- Inven_DT |> 
+  dplyr::group_by(Urte, Mota, Tipo, Estado) |> 
+  dplyr::summarise(Area=sum(area, na.rm = TRUE))
+         
+# analisis
+
+```
+
+```{r datatable, include=TRUE}
+
+analisis_WT <- analisis |> 
+  datatable(filter="top", 
+            class = 'cell-border stripe',
+            options = list(pageLength = 20,
+                           autoWidth = TRUE),
+            rownames=FALSE)|> 
+  formatStyle(columns = c(1: 5), fontSize = '90%',width = '40%')|>
+  formatStyle(columns = c(2, 4),  color = 'blue')|>
+  formatStyle(columns = c(1,2,5),  backgroundColor = 'linen')|>
+  # formatPercentage(c("Mendi_pub"), 2) |> 
+  formatStyle(columns = c(2,5), fontWeight = "bold")
+  
+analisis_WT
+
+```
+
+### 
+
++------------------------------------------------------------------------------------------------+
+| [**GISARTE. GIS, Ingurumena & Remote Sensing**](https://www.gisarte.com)                       |
+|                                                                                                |
+| **Eduardo Martín Azaola:** [gisarte03\@gmail.com](mailto:gisarte03@gmail.com){.email}          |
+|                                                                                                |
+| **Data**: [GeoEuskadi](https://www.geo.euskadi.eus/servicios-de-descarga/webgeo00-content/es/) |
++------------------------------------------------------------------------------------------------+
